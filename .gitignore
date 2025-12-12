@@ -1,0 +1,44 @@
+# 💡 Entorno Virtual (¡Muy Importante!)
+# Ignora todo el directorio del entorno virtual
+venv/
+
+# 🔒 Archivos de Configuración Local y Secretos
+# Archivo de variables de entorno (contiene claves secretas, etc.)
+.env
+
+# 📦 Archivos Generados por Python y Django
+# Archivos de caché
+__pycache__/
+*.pyc
+*.pyd
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Base de datos SQLite local
+# (Generalmente no se sube a Git, a menos que sea una base de datos de ejemplo)
+db.sqlite3
+
+# Archivos de la base de datos de PostgreSQL (si usas Docker localmente)
+postgres_data/
+
+# Archivos de migración de Django
+# Deja las migraciones iniciales, pero ignora los archivos .pyc dentro
+*/migrations/*.pyc
+
+# 🖼️ Archivos Multimedia y de Carga (User Uploads)
+# Los archivos cargados por el usuario deben ser ignorados
+# El contenido de 'media/' y 'temp_uploads/'
+media/
+temp_uploads/
+
+# Archivos de logs
+logs/
+
+# 🔑 Archivos de Tokens (Seguridad)
+# Ignora cualquier archivo que contenga tokens o credenciales
+tokens/
+
+# 📜 Archivos de Backups
+# Ignora archivos de backup de la base de datos
+*.sql
