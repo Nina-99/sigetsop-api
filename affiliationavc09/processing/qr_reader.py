@@ -91,7 +91,7 @@ def read_qr_from_image(pil_image: Image):
             "hospital": None,
         }
 
-        print(f"INFO: Datos QR parseados: {payload}")
+        # print(f"INFO: Datos QR parseados: {payload}")
         return payload
 
     except Exception as e:

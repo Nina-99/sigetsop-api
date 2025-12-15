@@ -217,7 +217,6 @@ def extract_fields_by_position(pil_img, qr_data):
             if any(normalize_for_match(k) in normalize_text for k in keywords):
                 # 1️⃣ Verificar si el valor está en la misma línea (DESDE:25-08-2025)
                 same_line_val = extract_value_from_line(text, keywords[0])
-                print(f"same_line_val {same_line_val}")
                 existing = qr_data.get(field)
                 if same_line_val:
                     if not existing:
