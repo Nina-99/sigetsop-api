@@ -5,15 +5,119 @@
 #
 import os
 import tempfile
+import numpy as np
 
 from django.core.files.storage import default_storage
+from django.http.request import MultiPartParser
 from django.shortcuts import render
-from rest_framework import status
+from rest_framework import status, views, viewsets
+from django.conf import settings
+from PIL import Image
+from rest_framework.parsers import FormParser
 from rest_framework.views import APIView, Response
 
 from .models import AffiliationAVC04
 from .serializers import AffiliationAVC04Serializer
-from .utils import process_file_and_extract
+
+from .processing.ocr_logic import (
+    extract_fields_by_position,
+)
+from .processing.qr_reader import read_qr_from_image
+from .processing.utils import correct_img, find_initial_points, pdf_to_images
+from concurrent.futures import ThreadPoolExecutor
+
+executor = ThreadPoolExecutor(max_workers=1)
+
+# from .utils import process_file_and_extract
+
+
+class UploadAndProcessView(views.APIView):
+
+    parser_classes = (MultiPartParser, FormParser)
+
+    def post(self, request):
+        file_obj = request.FILES.get("file")
+        if not file_obj:
+            return Response(
+                {"error": "No se envió archivo"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Guardar archivo
+        filename = file_obj.name
+        os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
+        save_path = os.path.join(settings.MEDIA_ROOT, filename)
+        with open(save_path, "wb+") as f:
+            for chunk in file_obj.chunks():
+                f.write(chunk)
+
+        # Convertir a imagen (maneja PDF también)
+        pil_images = pdf_to_images(save_path)
+        pil_img = pil_images[0]  # tomar primera página
+
+        points = find_initial_points(pil_img)
+        if points is None:
+            points = [
+                [0, 0],
+                [pil_img.width, 0],
+                [pil_img.width, pil_img.height],
+                [0, pil_img.height],
+            ]
+
+        return Response(
+            {
+                "image_url": request.build_absolute_uri(settings.MEDIA_URL + filename),
+                "initial_points": points.tolist(),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class CorrectAndOcrView(views.APIView):
+    def post(self, request):
+        image_url = request.data.get("image_url")
+        points = request.data.get("points")
+        imageSize = request.data.get("imageSize")
+        displaySize = request.data.get("displaySize")
+
+        if not image_url or not points:
+            return Response(
+                {"error": "Faltan parámetros"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Obtener ruta
+        if image_url.startswith(request.build_absolute_uri(settings.MEDIA_URL)):
+            filename = image_url.split(settings.MEDIA_URL)[-1]
+            file_path = os.path.join(settings.MEDIA_ROOT, filename)
+        else:
+            return Response(
+                {"error": "URL no válida"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        pil_img = Image.open(file_path).convert("RGB")
+
+        # Aplicar corrección de perspectiva
+        try:
+            points = [[float(p["x"]), float(p["y"])] for p in points]
+        except Exception as e:
+            return Response(
+                {"error": f"Formato de puntos inválido: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        warped_img = correct_img(
+            pil_img, np.array(points, dtype="float32"), imageSize, displaySize
+        )
+        if warped_img is None:
+            return Response(
+                {"error": "No se pudo corregir la imagen"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Ejecutar OCR
+        qr_data = read_qr_from_image(pil_img)
+        future = executor.submit(extract_fields_by_position, warped_img, qr_data)
+        data = future.result()
+
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class AffiliationAVC04ViewSet(APIView):
@@ -29,12 +133,12 @@ class AffiliationAVC04ViewSet(APIView):
             for chunk in file.chunks():
                 dest.write(chunk)
 
-        data = process_file_and_extract(path)
-        serializer = AffiliationAVC04Serializer(data=data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        # data = process_file_and_extract(path)
+        # serializer = AffiliationAVC04Serializer(data=data)
+        # if serializer.is_valid():
+        #     serializer.save()
+        #     return Response(serializer.data, status=status.HTTP_201_CREATED)
+        # return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 #
